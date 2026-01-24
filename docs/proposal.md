@@ -61,3 +61,10 @@ We will conduct case studies on representative symptom queries and medical image
 - Visualizing retrieved document chunks  
 - Inspecting generated responses  
 - Analyzing
+
+## AI Tool Usage
+We plan to use different tools at all stages of our project but the main ones that will guide our design is:
+-Pytorch for the deep network framework
+-Supabase for our database
+-Pinecone for our vecotr database
+-Either gemini or claude for our llm api calls
