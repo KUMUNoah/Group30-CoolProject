@@ -6,11 +6,11 @@ title:  Team
 # {{ page.title }}
 
 
-## USER 1
-***UCI Net ID***: ucinetid1
+## Noah Takashima
+***UCI Net ID***: nntakash
 
-## USER 2
-***UCI Net ID***: ucinetid2
+## Matthew Dang
+***UCI Net ID***: dangmq1
 
-## USER 3
-***UCI Net ID***: ucinetid3
+## Kienlac Mai
+***UCI Net ID***: kienlacm
