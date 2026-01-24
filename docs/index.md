@@ -7,7 +7,7 @@ Source code: https://github.com/KUMUNoah/Group30-CoolProject/
 
 Reports:
 
-- [Proposal](proposal.html)
+- [Proposal](proposal.md)
 - [Status](status.html)
 - [Final](final.html)
 
