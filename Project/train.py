@@ -1,7 +1,7 @@
 import torch
 from torch.nn.functional import cross_entropy
 from data.dataloader import get_dataloaders
-from model import SpatialVisionFusion
+from src.model import SpatialVisionFusion
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.tensorboard import SummaryWriter
@@ -11,6 +11,7 @@ def train(model, dataloader, optimizer, scheduler, device, epoch, writer):
     model.train()
     total_loss = 0.0
     for batch_idx, data_dict in enumerate(dataloader):
+        # later on change images to also include metadata features and update model forward function to take in both image and metadata features
         images, labels = data_dict['image'].to(device), data_dict['label'].to(device)
         
         optimizer.zero_grad()
@@ -59,6 +60,7 @@ def test(model, dataloader, device):
     
     with torch.no_grad():
         for data_dict in dataloader:
+            # Same with validation and test, update to include metadata features later on
             images, labels = data_dict['image'].to(device), data_dict['label'].to(device)
             outputs = model(images)
             _, predicted = torch.max(outputs.data, 1)
@@ -74,7 +76,7 @@ def main():
     model = SpatialVisionFusion().to(device)
     
     #Replace with path to data on your machine after running data_lod.py
-    path_to_data = '/Users/noahtakashima/.cache/kagglehub/datasets/mahdavi1202/skin-cancer/versions/1/'
+    path_to_data = '/Users/noahtakashima/.cache/kagglehub/datasets/mahdavi1202/skin-cancer/versions/1'
     train_loader, val_loader, test_loader = get_dataloaders(path_to_data, batch_size=32)
     
     optimizer = Adam(model.parameters(), lr=1e-4)

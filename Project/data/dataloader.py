@@ -53,7 +53,7 @@ def _build_img_index(data_root: str) -> Dict[str, str]:
         folder_path = root / folder
         if not folder_path.exists():
             continue
-        for fpath in folder_path.glob("*.png"):
+        for fpath in folder_path.glob("**/*.png"):
             index[fpath.stem] = str(fpath)   # key = filename without extension
     return index
 

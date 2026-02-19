@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 from torchvision import models
 import timm
@@ -43,11 +42,12 @@ class SpatialVisionFusion(nn.Module):
         
         # Extract features from ViT
         vit_features = self.vit.forward_features(x)
-        # (B, 768)
+        # (B, seq_len, 768) - forward_features returns sequence of tokens
+        vit_features = vit_features[:, 0, :]  # Extract class token (B, 768)
         vit_proj = self.vit_projection(vit_features)
         # Linear Function Transforms vector to (B, shared_dim)
         vit_query = vit_proj.unsqueeze(1)
-        # (B, 1, shared_dim) - Attention queary expects (B, seq_len, embed_dim) format
+        # (B, 1, shared_dim) - Attention query expects (B, seq_len, embed_dim) format
         
         # Reshape features for cross attention
         resnet_flatten = resnet_features.flatten(2).transpose(1, 2)
