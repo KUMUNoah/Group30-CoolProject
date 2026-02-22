@@ -5,6 +5,7 @@ from src.model import SpatialVisionFusion
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.tensorboard import SummaryWriter
+from torchvision import models
 import os
 
 def train(model, dataloader, optimizer, scheduler, device, epoch, writer):
@@ -70,10 +71,20 @@ def test(model, dataloader, device):
     accuracy = 100. * correct / total
     print(f'Test Accuracy: {accuracy:.2f}%')
 
-    
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # To train different models change the model here 
     model = SpatialVisionFusion().to(device)
+    
+    
+    # Uncomment below to train ResNet-50 baseline instead of SpatialVisionFusion
+    # Comment out the SpatialVisionFusion import and model initialization at the top of this file if training ResNet-50 baseline instead
+    # model = models.resnet50(pretrained=True)
+    # model.fc = torch.nn.Linear(model.fc.in_features, 6)  # Change final layer for 6 classes
+    # model = model.to(device)
+    
+    model_type = "SpatialVisionFusion"  # Change to "ResNet50" if training ResNet-50 baseline
+    # model_type = "ResNet50"
     
     #Replace with path to data on your machine after running data_lod.py
     path_to_data = '/Users/noahtakashima/.cache/kagglehub/datasets/mahdavi1202/skin-cancer/versions/1'
@@ -87,18 +98,18 @@ def main():
             return 1
         existing = []
         for name in os.listdir(base_dir):
-            if name.startswith('experiment_'):
-                suffix = name.replace('experiment_', '')
+            if name.startswith(f'{model_type}_experiment_'):
+                suffix = name.replace(f'{model_type}_experiment_', '')
                 if suffix.isdigit():
                     existing.append(int(suffix))
         return (max(existing) + 1) if existing else 1
 
     experiment_id = get_next_experiment_id('tensor_board')
-    log_dir = os.path.join('tensor_board', f'experiment_{experiment_id}')
+    log_dir = os.path.join('tensor_board', f'{model_type}_experiment_{experiment_id}')
     os.makedirs(log_dir, exist_ok=True)
     writer = SummaryWriter(log_dir=log_dir)
 
-    models_dir = os.path.join('models', f'experiment_{experiment_id}')
+    models_dir = os.path.join('models', f'{model_type}_experiment_{experiment_id}')
     os.makedirs(models_dir, exist_ok=True)
     best_val_loss = float('inf')
     
