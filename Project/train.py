@@ -87,7 +87,7 @@ def main():
     # model_type = "ResNet50"
     
     #Replace with path to data on your machine after running data_lod.py
-    path_to_data = '/Users/noahtakashima/.cache/kagglehub/datasets/mahdavi1202/skin-cancer/versions/1'
+    path_to_data = path_to_data = r"C:\Users\kienl\.cache\kagglehub\datasets\mahdavi1202\skin-cancer\versions\1"
     train_loader, val_loader, test_loader = get_dataloaders(path_to_data, batch_size=32)
     
     optimizer = Adam(model.parameters(), lr=1e-4)
@@ -113,7 +113,7 @@ def main():
     os.makedirs(models_dir, exist_ok=True)
     best_val_loss = float('inf')
     
-    num_epochs = 20
+    num_epochs = 35
     for epoch in range(1, num_epochs + 1):
         train(model, train_loader, optimizer, scheduler, device, epoch, writer)
         val_loss, val_acc = validate(model, val_loader, device, epoch, writer)
