@@ -21,14 +21,14 @@ class SpatialVisionFusion(nn.Module):
         self.vit_projection = nn.Linear(768, shared_dim)
         
         # Metadata projection layer (if using metadata features)
-        self.metadata_projection = nn.Linear(26, shared_dim)
+        self.metadata_projection = nn.Linear(22, shared_dim)
         
         # Cross Attention Layer
         self.cross_attention = nn.MultiheadAttention(shared_dim, num_heads=8, batch_first=True)
         
         # Final classification layer
         self.classifier = nn.Sequential(
-            nn.Linear(shared_dim, 256),
+            nn.Linear(2 * shared_dim, 256),
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(256, 6)

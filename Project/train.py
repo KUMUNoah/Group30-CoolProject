@@ -1,7 +1,7 @@
 import torch
 from torch.nn.functional import cross_entropy
 from data.dataloader import get_dataloaders
-from src.model import SpatialVisionFusion
+# from src.model import SpatialVisionFusion
 from torch.optim import Adam
 from torch.optim.lr_scheduler import StepLR
 from torch.utils.tensorboard import SummaryWriter
@@ -74,20 +74,20 @@ def test(model, dataloader, device):
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # To train different models change the model here 
-    model = SpatialVisionFusion().to(device)
+    # model = SpatialVisionFusion().to(device)
     
     
     # Uncomment below to train ResNet-50 baseline instead of SpatialVisionFusion
     # Comment out the SpatialVisionFusion import and model initialization at the top of this file if training ResNet-50 baseline instead
-    # model = models.resnet50(pretrained=True)
-    # model.fc = torch.nn.Linear(model.fc.in_features, 6)  # Change final layer for 6 classes
-    # model = model.to(device)
+    model = models.resnet50(pretrained=True)
+    model.fc = torch.nn.Linear(model.fc.in_features, 6)  # Change final layer for 6 classes
+    model = model.to(device)
     
-    model_type = "SpatialVisionFusion"  # Change to "ResNet50" if training ResNet-50 baseline
-    # model_type = "ResNet50"
+    # model_type = "SpatialVisionFusion"  # Change to "ResNet50" if training ResNet-50 baseline
+    model_type = "ResNet50"
     
     #Replace with path to data on your machine after running data_lod.py
-    path_to_data = '/Users/noahtakashima/.cache/kagglehub/datasets/mahdavi1202/skin-cancer/versions/1'
+    path_to_data = r"C:\Users\kienl\.cache\kagglehub\datasets\mahdavi1202\skin-cancer\versions\1"
     train_loader, val_loader, test_loader = get_dataloaders(path_to_data, batch_size=32)
     
     optimizer = Adam(model.parameters(), lr=1e-4)
