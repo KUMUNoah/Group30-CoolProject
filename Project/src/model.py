@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from torchvision import models
 import timm
@@ -20,7 +21,7 @@ class SpatialVisionFusion(nn.Module):
         self.vit_projection = nn.Linear(768, shared_dim)
         
         # Metadata projection layer (if using metadata features)
-        # self.metadata_projection = nn.Linear(26, shared_dim)
+        self.metadata_projection = nn.Linear(26, shared_dim)
         
         # Cross Attention Layer
         self.cross_attention = nn.MultiheadAttention(shared_dim, num_heads=8, batch_first=True)
@@ -33,7 +34,7 @@ class SpatialVisionFusion(nn.Module):
             nn.Linear(256, 6)
         )
     
-    def forward(self, x):
+    def forward(self, x, metadata=None):
         # Extract features from ResNet
         resnet_features = self.resnet_feature_extractor(x)
         # (B, 2048, 7, 7)
@@ -62,17 +63,17 @@ class SpatialVisionFusion(nn.Module):
         
         # Metadata is a tensor of (B, 26) - 26 metadata features
         # We can project metadata features to the same shared dimension as vision features using a linear layer
-        # metadata_features = self.metadata_projection(metadata)
-        # metadata_featues = metadata_features.unsqueeze(1)
+        metadata_features = self.metadata_projection(metadata)
+        metadata_features = metadata_features.unsqueeze(1)
         
         # Apply cross attention between metadata features and ResNet features
-        # meta_attended_features, meta_attention_weights = self.cross_attention(metadata_features, resnet_flatten, resnet_flatten, need_weights=True)
-        # meta_attended_features = meta_attended_features.squeeze(1)
+        meta_attended_features, meta_attention_weights = self.cross_attention(metadata_features, resnet_flatten, resnet_flatten, need_weights=True)
+        meta_attended_features = meta_attended_features.squeeze(1)
         
         # Combine attended features with metadata features
-        # combined_features = torch.cat([attended_features, meta_attended_features], dim=1)
+        combined_features = torch.cat([attended_features, meta_attended_features], dim=1)
         
         # Pass attended features through the classifier
-        output = self.classifier(attended_features)
+        output = self.classifier(combined_features)
         
         return output

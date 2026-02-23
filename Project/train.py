@@ -13,10 +13,10 @@ def train(model, dataloader, optimizer, scheduler, device, epoch, writer):
     total_loss = 0.0
     for batch_idx, data_dict in enumerate(dataloader):
         # later on change images to also include metadata features and update model forward function to take in both image and metadata features
-        images, labels = data_dict['image'].to(device), data_dict['label'].to(device)
+        images, labels, metadata = data_dict['image'].to(device), data_dict['label'].to(device), data_dict['metadata'].to(device)
         
         optimizer.zero_grad()
-        outputs = model(images)
+        outputs = model(images, metadata)
         loss = cross_entropy(outputs, labels)
         loss.backward()
         optimizer.step()
@@ -38,8 +38,8 @@ def validate(model, dataloader, device, epoch, writer):
     
     with torch.no_grad():
         for data_dict in dataloader:
-            images, labels = data_dict['image'].to(device), data_dict['label'].to(device)
-            outputs = model(images)
+            images, labels, metadata = data_dict['image'].to(device), data_dict['label'].to(device), data_dict['metadata'].to(device)
+            outputs = model(images, metadata)
             loss = cross_entropy(outputs, labels)
             total_loss += loss.item()
             
@@ -62,8 +62,8 @@ def test(model, dataloader, device):
     with torch.no_grad():
         for data_dict in dataloader:
             # Same with validation and test, update to include metadata features later on
-            images, labels = data_dict['image'].to(device), data_dict['label'].to(device)
-            outputs = model(images)
+            images, labels, metadata = data_dict['image'].to(device), data_dict['label'].to(device), data_dict['metadata'].to(device)
+            outputs = model(images, metadata)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
