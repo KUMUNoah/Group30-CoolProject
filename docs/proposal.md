@@ -4,7 +4,7 @@ title: Proposal
 ---
 
 # Project Title  
-**Private Health Education Assistant Using Image Classification and RAG**
+**Skin AI**
 
 ## Summary of Project  
 The goal of this project is to build a privacy-focused health education assistant that provides **general medical information** based on user inputs. The system accepts either:
