@@ -12,7 +12,7 @@ class MultiModalCNNFusion(nn.Module):
         
         # Create a simple MLP for metadata processing
         self.metadata_mlp = nn.Sequential(
-            nn.Linear(26, 64),
+            nn.Linear(22, 64),
             nn.BatchNorm1d(64),
             nn.ReLU(),
             nn.Linear(64, 64),
