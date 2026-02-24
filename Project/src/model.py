@@ -3,6 +3,38 @@ import torch.nn as nn
 from torchvision import models
 import timm
 
+class MultiModalCNNFusion(nn.Module):
+    def __init__(self):
+        super().__init__()
+        
+        # Load pre-trained efficientnet_b0 model
+        self.cnn = models.efficientnet_b0(weights=models.EfficientNet_B0_Weights.IMAGENET1K_V1)
+        
+        # Create a simple MLP for metadata processing
+        self.metadata_mlp = nn.Sequential(
+            nn.Linear(26, 64),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Dropout(0.3)
+        )
+        
+        # Final classification layer
+        self.classifier = nn.Sequential(
+            nn.Linear(1344, 256),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(256, 6)
+        )
+    
+    def forward(self, x, metadata=None):
+        cnn_features = self.cnn.avgpool(self.cnn.features(x)).flatten(1)
+        metadata_features = self.metadata_mlp(metadata)
+        combined_features = torch.cat([cnn_features, metadata_features], dim=1)
+        output = self.classifier(combined_features)
+        return output
+
 class SpatialVisionFusion(nn.Module):
     def __init__(self, shared_dim=512):
         super().__init__()
