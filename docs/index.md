@@ -3,38 +3,34 @@ layout: default
 title:  Home
 ---
 
-Source code: https://github.com/KUMUNoah/Group30-CoolProject/
+SkinAI is a deep learning system for multi-class classification of dermatological skin lesions using the PAD-UFES-20 dataset. Our goal is to improve diagnostic performance on imbalanced and clinically critical classes (such as melanoma and squamous cell carcinoma) by combining convolutional neural networks with patient metadata.
 
-Reports:
+---
+
+## Project Overview
+
+![Project Overview](assets/SpatialVisionMD.png)
+
+---
+
+## Source Code
+
+Github Repository: https://github.com/KUMUNoah/Group30-CoolProject/
+
+---
+
+## Reports:
 
 - [Proposal](proposal.md)
 - [Status](status.html)
 - [Final](final.html)
 
-What's Markdown (`.md`)?
+---
 
-Markdown is markup that lets you write hypertext (HTML) documents
-in easy-to-read and easy-to-write plain text.
-No angle brackets `<></>` required for
-paragraphs, lists, blockquotes, tables, etc.
+## Dataset
 
+We use the **PAD-UFES-20** dataset:
+ - 2,298 clinical images
+ - 6 diagnostic classes (BCC, SCC, MEL, ACK, NEV, SEK)
+ - 22 patient metadata features
 
-This is a paragraph (in Markdown). Some more
-text here.
-
-This is another paragraph.
-
-This is a list:
-
-- Orange
-- Apple
-- Blueberry
-
-$$x^2 = y^2$$
-
-
-Just getting started with Markdown?
-See the [HTML <-> Markdown Quick Reference (Cheat Sheet)][quickref].
-
-
-[quickref]: https://github.com/mundimark/quickrefs/blob/master/HTML.md
