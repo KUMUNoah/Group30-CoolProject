@@ -1,98 +1,129 @@
 import torch
-from torch.nn.functional import cross_entropy
+import torch.nn as nn
+import numpy as np
 from data.dataloader import get_dataloaders
-# from src.model import SpatialVisionFusion
+from src.model import MultiModalCNNFusion
 from torch.optim import Adam
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import models
 import os
 
-def train(model, dataloader, optimizer, scheduler, device, epoch, writer):
+NUM_CLASSES = 6
+CLASS_NAMES = ["BCC", "SCC", "ACK", "SEK", "MEL", "NEV"]
+
+def train(model, dataloader, optimizer, scheduler, criterion, device, epoch, writer):
     model.train()
     total_loss = 0.0
     for batch_idx, data_dict in enumerate(dataloader):
-        # later on change images to also include metadata features and update model forward function to take in both image and metadata features
         images, labels, metadata = data_dict['image'].to(device), data_dict['label'].to(device), data_dict['metadata'].to(device)
-        
+
         optimizer.zero_grad()
         outputs = model(images, metadata)
-        loss = cross_entropy(outputs, labels)
+        loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
-        
+
         total_loss += loss.item()
-        
+
         if batch_idx % 10 == 0:
             print(f'Epoch [{epoch}], Batch [{batch_idx}/{len(dataloader)}], Loss: {loss.item():.4f}')
-    
+
     avg_loss = total_loss / len(dataloader)
     writer.add_scalar('Loss/train', avg_loss, epoch)
+    # Log current learning rate
+    writer.add_scalar('LR', optimizer.param_groups[0]['lr'], epoch)
     scheduler.step()
-    
-def validate(model, dataloader, device, epoch, writer):
+
+def validate(model, dataloader, criterion, device, epoch, writer):
     model.eval()
     total_loss = 0.0
     correct = 0
     total = 0
-    
+    class_correct = np.zeros(NUM_CLASSES)
+    class_total = np.zeros(NUM_CLASSES)
+
     with torch.no_grad():
         for data_dict in dataloader:
             images, labels, metadata = data_dict['image'].to(device), data_dict['label'].to(device), data_dict['metadata'].to(device)
             outputs = model(images, metadata)
-            loss = cross_entropy(outputs, labels)
+            loss = criterion(outputs, labels)
             total_loss += loss.item()
-            
+
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
+
+            for cls in range(NUM_CLASSES):
+                mask = (labels == cls)
+                class_correct[cls] += (predicted[mask] == labels[mask]).sum().item()
+                class_total[cls] += mask.sum().item()
 
     accuracy = 100. * correct / total
     avg_loss = total_loss / len(dataloader)
     writer.add_scalar('Loss/val', avg_loss, epoch)
     writer.add_scalar('Accuracy/val', accuracy, epoch)
     print(f'Validation Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%')
+    print('  Per-class accuracy:')
+    for i, name in enumerate(CLASS_NAMES):
+        if class_total[i] > 0:
+            cls_acc = 100. * class_correct[i] / class_total[i]
+            writer.add_scalar(f'Accuracy/val_{name}', cls_acc, epoch)
+            print(f'    {name}: {cls_acc:.1f}% ({int(class_correct[i])}/{int(class_total[i])})')
     return avg_loss, accuracy
 
-def test(model, dataloader, device):
+def test(model, dataloader, criterion, device):
     model.eval()
     correct = 0
     total = 0
-    
+    class_correct = np.zeros(NUM_CLASSES)
+    class_total = np.zeros(NUM_CLASSES)
+
     with torch.no_grad():
         for data_dict in dataloader:
-            # Same with validation and test, update to include metadata features later on
             images, labels, metadata = data_dict['image'].to(device), data_dict['label'].to(device), data_dict['metadata'].to(device)
             outputs = model(images, metadata)
             _, predicted = torch.max(outputs.data, 1)
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
+            for cls in range(NUM_CLASSES):
+                mask = (labels == cls)
+                class_correct[cls] += (predicted[mask] == labels[mask]).sum().item()
+                class_total[cls] += mask.sum().item()
+
     accuracy = 100. * correct / total
     print(f'Test Accuracy: {accuracy:.2f}%')
+    print('  Per-class accuracy:')
+    for i, name in enumerate(CLASS_NAMES):
+        if class_total[i] > 0:
+            cls_acc = 100. * class_correct[i] / class_total[i]
+            print(f'    {name}: {cls_acc:.1f}% ({int(class_correct[i])}/{int(class_total[i])})')
 
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # To train different models change the model here 
-    # model = SpatialVisionFusion().to(device)
-    
-    
-    # Uncomment below to train ResNet-50 baseline instead of SpatialVisionFusion
-    # Comment out the SpatialVisionFusion import and model initialization at the top of this file if training ResNet-50 baseline instead
-    model = models.resnet50(pretrained=True)
-    model.fc = torch.nn.Linear(model.fc.in_features, 6)  # Change final layer for 6 classes
-    model = model.to(device)
-    
-    # model_type = "SpatialVisionFusion"  # Change to "ResNet50" if training ResNet-50 baseline
-    model_type = "ResNet50"
-    
-    #Replace with path to data on your machine after running data_lod.py
-    path_to_data = r"C:\Users\kienl\.cache\kagglehub\datasets\mahdavi1202\skin-cancer\versions\1"
+    # To train different models change the model here
+    model = MultiModalCNNFusion().to(device)
+
+    model_type = "MultiModalCNNFusion"
+
+    #Replace with path to data on your machine after running data_load.py
+    path_to_data = '/Users/noahtakashima/.cache/kagglehub/datasets/mahdavi1202/skin-cancer/versions/1'
     train_loader, val_loader, test_loader = get_dataloaders(path_to_data, batch_size=32)
-    
-    optimizer = Adam(model.parameters(), lr=1e-4)
-    scheduler = StepLR(optimizer, step_size=5, gamma=0.1)
-    
+
+    # Class-weighted loss with label smoothing: handles class imbalance and reduces overconfidence
+    class_weights = train_loader.dataset.class_weights().to(device)
+    criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
+
+    num_epochs = 20
+    optimizer = Adam([
+        {'params': model.cnn.parameters(), 'lr': 1e-5},        # backbone: slow
+        {'params': model.metadata_mlp.parameters(), 'lr': 1e-3},
+        {'params': model.classifier.parameters(), 'lr': 1e-3},
+    ])
+    # CosineAnnealingLR decays LR smoothly to eta_min instead of dropping sharply every 5 epochs
+    scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-6)
+
     def get_next_experiment_id(base_dir: str) -> int:
         if not os.path.isdir(base_dir):
             return 1
@@ -112,14 +143,13 @@ def main():
     models_dir = os.path.join('models', f'{model_type}_experiment_{experiment_id}')
     os.makedirs(models_dir, exist_ok=True)
     best_val_loss = float('inf')
-    
-    num_epochs = 20
+    best_path = os.path.join(models_dir, 'best_model.pt')
+
     for epoch in range(1, num_epochs + 1):
-        train(model, train_loader, optimizer, scheduler, device, epoch, writer)
-        val_loss, val_acc = validate(model, val_loader, device, epoch, writer)
+        train(model, train_loader, optimizer, scheduler, criterion, device, epoch, writer)
+        val_loss, val_acc = validate(model, val_loader, criterion, device, epoch, writer)
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            best_path = os.path.join(models_dir, 'best_model.pt')
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
@@ -127,9 +157,14 @@ def main():
                 'val_loss': val_loss,
                 'val_acc': val_acc,
             }, best_path)
-    test(model, test_loader, device)
+
+    # Load best checkpoint (lowest val loss) for final test evaluation
+    checkpoint = torch.load(best_path, map_location=device)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    print(f"\nLoaded best model from epoch {checkpoint['epoch']} (val_loss={checkpoint['val_loss']:.4f}, val_acc={checkpoint['val_acc']:.2f}%)")
+    test(model, test_loader, criterion, device)
     writer.close()
-    
-    
+
+
 if __name__ == "__main__":
     main()

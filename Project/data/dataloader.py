@@ -271,10 +271,16 @@ def get_transforms(
         transforms.RandomCrop(img_size),
         transforms.RandomHorizontalFlip(),
         transforms.RandomVerticalFlip(),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
-        transforms.RandomRotation(15),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
+        transforms.RandomRotation(20),
+        # Simulate slight camera angle / zoom variation
+        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+        # Simulate slight blur from out-of-focus smartphone camera
+        transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std),
+        # Randomly erase small patches to simulate occlusion / hair
+        transforms.RandomErasing(p=0.2, scale=(0.02, 0.1)),
     ])
 
     return train_transform, eval_transform
