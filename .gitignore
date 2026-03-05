@@ -1,2 +1,4 @@
 venv/
 src/data
+project/models
+project/tensor_board

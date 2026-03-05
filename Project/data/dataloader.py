@@ -1,5 +1,4 @@
 import os
-import re
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -27,8 +26,8 @@ DIAGNOSTIC_MERGE = {"BOD": "SCC"}
 CLASSES = ["BCC", "SCC", "ACK", "SEK", "MEL", "NEV"]
 
 # Cancer vs non-cancer grouping (useful for binary tasks)
-CANCER_CLASSES   = {"BCC", "MEL", "SCC"}
-DISEASE_CLASSES  = {"ACK", "NEV", "SEK"}
+CANCER_CLASSES = {"BCC", "MEL", "SCC"}
+DISEASE_CLASSES = {"ACK", "NEV", "SEK"}
 
 # Categorical columns and their expected unique values (for encoding / docs)
 CATEGORICAL_COLS = [
@@ -39,6 +38,15 @@ CATEGORICAL_COLS = [
 ]
 
 NUMERICAL_COLS = ["age", "diameter_1", "diameter_2"]
+
+
+# ---------------------------------------------------------------------------
+# Utility: strip file extension from img_id (handles "PAT_1_1_1.png" or
+# "PAT_1_1_1" in the CSV)
+# ---------------------------------------------------------------------------
+
+def _strip_ext(img_id: str) -> str:
+    return Path(img_id).stem
 
 
 # ---------------------------------------------------------------------------
@@ -65,30 +73,6 @@ def _build_img_index(data_root: str) -> Dict[str, str]:
 class PADDataset(Dataset):
     """
     PyTorch Dataset for PAD-UFES-20.
-
-    Parameters
-    ----------
-    data_root : str
-        Root directory containing imgs_part_1/, imgs_part_2/, imgs_part_3/,
-        and metadata.csv.
-    split_df : pd.DataFrame
-        A pre-filtered slice of the metadata DataFrame for this split.
-    img_index : dict
-        Mapping from img_id stem → full image path (built by _build_img_index).
-    transform : callable, optional
-        Torchvision transforms applied to the PIL image.
-    use_metadata : bool
-        Whether to return encoded metadata features alongside the image.
-        Useful for multi-modal models.
-    label_encoder : LabelEncoder, optional
-        Fitted sklearn LabelEncoder for the 'diagnostic' column.
-        If None a new one is fitted on split_df (not recommended for val/test).
-    meta_means : pd.Series, optional
-        Column means used to impute missing numerical values.
-        Pass training set means to val/test to avoid leakage.
-    meta_modes : pd.Series, optional
-        Column modes used to impute missing categorical values.
-        Pass training set modes to val/test to avoid leakage.
     """
 
     def __init__(
@@ -101,11 +85,15 @@ class PADDataset(Dataset):
         label_encoder: Optional[LabelEncoder] = None,
         meta_means: Optional[pd.Series] = None,
         meta_modes: Optional[pd.Series] = None,
+        cat_maps: Optional[Dict[str, Dict[str, int]]] = None,
     ):
-        self.data_root    = data_root
-        self.img_index    = img_index
-        self.transform    = transform
+        self.data_root = data_root
+        self.img_index = img_index
+        self.transform = transform
         self.use_metadata = use_metadata
+        self._meta_means = meta_means
+        self._meta_modes = meta_modes
+        self._cat_maps = cat_maps
 
         # -- Work on a copy so we don't mutate the caller's DataFrame --
         df = split_df.reset_index(drop=True).copy()
@@ -114,9 +102,7 @@ class PADDataset(Dataset):
         df["diagnostic"] = df["diagnostic"].replace(DIAGNOSTIC_MERGE)
 
         # Drop rows whose image is not found on disk
-        found_mask = df["img_id"].apply(
-            lambda x: _strip_ext(str(x)) in img_index
-        )
+        found_mask = df["img_id"].apply(lambda x: _strip_ext(str(x)) in img_index)
         missing = (~found_mask).sum()
         if missing:
             print(f"[PADDataset] Warning: {missing} image(s) not found on disk — skipping.")
@@ -127,7 +113,7 @@ class PADDataset(Dataset):
         # -- Label encoding --
         if label_encoder is None:
             self.le = LabelEncoder()
-            self.le.fit(CLASSES)          # fit on all classes for consistency
+            self.le.fit(CLASSES)  # fit on all classes for consistency
         else:
             self.le = label_encoder
 
@@ -135,8 +121,6 @@ class PADDataset(Dataset):
 
         # -- Metadata encoding (optional) --
         if use_metadata:
-            self._meta_means = meta_means
-            self._meta_modes = meta_modes
             self.meta_tensor = self._encode_metadata(df)
 
     # ------------------------------------------------------------------ #
@@ -147,31 +131,48 @@ class PADDataset(Dataset):
         """Return a (N, F) float tensor of encoded metadata features."""
         feature_frames = []
 
-        # Numerical columns (impute with mean, then z-score normalise)
+        # Numerical columns (impute with mean, then z-score normalize)
         for col in NUMERICAL_COLS:
             series = pd.to_numeric(df[col], errors="coerce")
-            fill   = self._meta_means[col] if (self._meta_means is not None and col in self._meta_means) else series.mean()
+
+            fill = (
+                self._meta_means[col]
+                if (self._meta_means is not None and col in self._meta_means)
+                else series.mean()
+            )
             series = series.fillna(fill)
-            # Normalise using training stats when available
+
+            # Normalize using training stats when available
             if self._meta_means is not None and col in self._meta_means:
                 mean = self._meta_means[col]
-                std  = self._meta_means.get(col + "_std", series.std())
+                std = self._meta_means.get(col + "_std", series.std())
             else:
                 mean, std = series.mean(), series.std()
-            std = std if std > 0 else 1.0
+
+            std = std if std and std > 0 else 1.0
             feature_frames.append(((series - mean) / std).values.reshape(-1, 1))
 
-        # Categorical columns (label encode → int, impute with mode)
         for col in CATEGORICAL_COLS:
             series = df[col].astype(str)
-            fill   = (self._meta_modes[col]
-                      if (self._meta_modes is not None and col in self._meta_modes)
-                      else series.mode().iloc[0])
+
+            fill = (
+                self._meta_modes[col]
+                if (self._meta_modes is not None and col in self._meta_modes)
+                else (series.mode().iloc[0] if len(series.mode()) else "unknown")
+            )
+
+            # normalize missing representations
             series = series.replace("nan", fill).fillna(fill)
-            # Simple ordinal encode
-            cats   = sorted(series.unique())
-            cat2id = {c: i for i, c in enumerate(cats)}
-            encoded = series.map(cat2id).fillna(0).astype(float).values.reshape(-1, 1)
+
+            # Use provided mapping (train-built). If missing, fallback to local mapping.
+            if self._cat_maps is not None and col in self._cat_maps:
+                cat2id = self._cat_maps[col]
+            else:
+                # fallback (not ideal, but prevents crash if cat_maps not passed)
+                vocab = ["__UNK__"] + sorted(series.unique().tolist())
+                cat2id = {v: i for i, v in enumerate(vocab)}
+
+            encoded = series.map(lambda v: cat2id.get(v, 0)).astype(np.float32).values.reshape(-1, 1)
             feature_frames.append(encoded)
 
         meta_array = np.concatenate(feature_frames, axis=1).astype(np.float32)
@@ -185,21 +186,20 @@ class PADDataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, idx: int) -> Dict:
-        row     = self.df.iloc[idx]
+        row = self.df.iloc[idx]
         img_key = _strip_ext(str(row["img_id"]))
         img_path = self.img_index[img_key]
 
-        # Load image
         image = Image.open(img_path).convert("RGB")
         if self.transform:
             image = self.transform(image)
 
         sample = {
-            "image":      image,
-            "label":      torch.tensor(self.labels[idx], dtype=torch.long),
+            "image": image,
+            "label": torch.tensor(self.labels[idx], dtype=torch.long),
             "patient_id": str(row["patient_id"]),
-            "lesion_id":  str(row["lesion_id"]),
-            "img_id":     str(row["img_id"]),
+            "lesion_id": str(row["lesion_id"]),
+            "img_id": str(row["img_id"]),
             "diagnostic": str(row["diagnostic"]),
         }
 
@@ -223,7 +223,7 @@ class PADDataset(Dataset):
     def class_weights(self) -> torch.Tensor:
         """Inverse-frequency weights per class (useful for loss weighting)."""
         counts = np.bincount(self.labels, minlength=self.num_classes).astype(float)
-        counts = np.where(counts == 0, 1, counts)          # avoid /0
+        counts = np.where(counts == 0, 1, counts)  # avoid /0
         weights = 1.0 / counts
         weights /= weights.sum()
         return torch.tensor(weights, dtype=torch.float32)
@@ -234,9 +234,7 @@ class PADDataset(Dataset):
         return [float(cw[l]) for l in self.labels]
 
     def label_distribution(self) -> pd.Series:
-        return pd.Series(
-            [self.class_names[l] for l in self.labels]
-        ).value_counts().sort_index()
+        return pd.Series([self.class_names[l] for l in self.labels]).value_counts().sort_index()
 
 
 # ---------------------------------------------------------------------------
@@ -249,13 +247,9 @@ def get_transforms(
 ) -> Tuple[transforms.Compose, transforms.Compose]:
     """
     Returns (train_transform, eval_transform).
-
-    Images are variable-size smartphone photos — we resize to a square.
-    Augmentation is only applied to the training transform.
     """
-    # ImageNet stats — reasonable starting point for transfer learning
     mean = [0.485, 0.456, 0.406]
-    std  = [0.229, 0.224, 0.225]
+    std = [0.229, 0.224, 0.225]
 
     eval_transform = transforms.Compose([
         transforms.Resize((img_size, img_size)),
@@ -273,13 +267,10 @@ def get_transforms(
         transforms.RandomVerticalFlip(),
         transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.05),
         transforms.RandomRotation(20),
-        # Simulate slight camera angle / zoom variation
         transforms.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1)),
-        # Simulate slight blur from out-of-focus smartphone camera
         transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 1.0)),
         transforms.ToTensor(),
         transforms.Normalize(mean=mean, std=std),
-        # Randomly erase small patches to simulate occlusion / hair
         transforms.RandomErasing(p=0.2, scale=(0.02, 0.1)),
     ])
 
@@ -305,39 +296,7 @@ def get_dataloaders(
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
     """
     Build train / val / test DataLoaders for PAD-UFES-20.
-
-    The split is done at **patient level** to prevent data leakage
-    (different images of the same patient never span train/val/test).
-
-    Parameters
-    ----------
-    data_root : str
-        Root folder containing imgs_part_1/, imgs_part_2/, imgs_part_3/,
-        and metadata.csv.
-    batch_size : int
-        Mini-batch size.
-    img_size : int
-        Square resolution to resize images to (default 224 for ImageNet models).
-    val_size : float
-        Fraction of patients in the validation split.
-    test_size : float
-        Fraction of patients in the test split.
-    use_metadata : bool
-        Return metadata tensors alongside images.
-    use_weighted_sampler : bool
-        Balance class distribution in training via WeightedRandomSampler.
-    num_workers : int
-        DataLoader workers.
-    seed : int
-        Random seed for reproducibility.
-    augment : bool
-        Apply data augmentation to the training set.
-    metadata_filename : str
-        Name of the CSV file inside data_root.
-
-    Returns
-    -------
-    (train_loader, val_loader, test_loader)
+    Split is at patient level (no leakage).
     """
     data_root = str(data_root)
 
@@ -353,8 +312,8 @@ def get_dataloaders(
     img_index = _build_img_index(data_root)
     print(f"[get_dataloaders] Found {len(img_index)} PNG images on disk.")
 
-    # -- Patient-level split to prevent leakage --
-    patients  = df["patient_id"].unique()
+    # -- Patient-level split --
+    patients = df["patient_id"].unique()
     train_pids, temp_pids = train_test_split(
         patients,
         test_size=val_size + test_size,
@@ -368,8 +327,8 @@ def get_dataloaders(
     )
 
     train_df = df[df["patient_id"].isin(train_pids)].reset_index(drop=True)
-    val_df   = df[df["patient_id"].isin(val_pids)].reset_index(drop=True)
-    test_df  = df[df["patient_id"].isin(test_pids)].reset_index(drop=True)
+    val_df = df[df["patient_id"].isin(val_pids)].reset_index(drop=True)
+    test_df = df[df["patient_id"].isin(test_pids)].reset_index(drop=True)
 
     print(
         f"[get_dataloaders] Patient split → "
@@ -381,12 +340,23 @@ def get_dataloaders(
     # -- Compute training set imputation stats (avoid leakage) --
     meta_means, meta_modes = None, None
     if use_metadata:
-        num_data    = train_df[NUMERICAL_COLS].apply(pd.to_numeric, errors="coerce")
-        meta_means  = num_data.mean()
-        # also store per-column std for normalisation
+        num_data = train_df[NUMERICAL_COLS].apply(pd.to_numeric, errors="coerce")
+        meta_means = num_data.mean()
         for col in NUMERICAL_COLS:
             meta_means[col + "_std"] = num_data[col].std()
         meta_modes = train_df[CATEGORICAL_COLS].astype(str).mode().iloc[0]
+
+    cat_maps: Optional[Dict[str, Dict[str, int]]] = None
+    if use_metadata:
+        cat_maps = {}
+        for col in CATEGORICAL_COLS:
+            s = train_df[col].astype(str)
+            fill = s.mode().iloc[0] if len(s.mode()) else "unknown"
+            s = s.replace("nan", fill).fillna(fill)
+
+            # reserve 0 for unknown
+            vocab = ["__UNK__"] + sorted(s.unique().tolist())
+            cat_maps[col] = {v: i for i, v in enumerate(vocab)}
 
     # -- Shared label encoder fitted on all classes --
     le = LabelEncoder()
@@ -403,6 +373,7 @@ def get_dataloaders(
         label_encoder=le,
         meta_means=meta_means,
         meta_modes=meta_modes,
+        cat_maps=cat_maps,
     )
     val_dataset = PADDataset(
         data_root, val_df, img_index,
@@ -411,6 +382,7 @@ def get_dataloaders(
         label_encoder=le,
         meta_means=meta_means,
         meta_modes=meta_modes,
+        cat_maps=cat_maps, 
     )
     test_dataset = PADDataset(
         data_root, test_df, img_index,
@@ -419,6 +391,7 @@ def get_dataloaders(
         label_encoder=le,
         meta_means=meta_means,
         meta_modes=meta_modes,
+        cat_maps=cat_maps,  
     )
 
     # -- Samplers --
@@ -466,12 +439,3 @@ def get_dataloaders(
         print(f"  Categorical ({len(CATEGORICAL_COLS)}): {CATEGORICAL_COLS}")
 
     return train_loader, val_loader, test_loader
-    
-
-# ---------------------------------------------------------------------------
-# Utility: strip file extension from img_id (handles "PAT_1_1_1.png" or
-# "PAT_1_1_1" in the CSV)
-# ---------------------------------------------------------------------------
-
-def _strip_ext(img_id: str) -> str:
-    return Path(img_id).stem
