@@ -10,8 +10,6 @@ from torchvision import models
 import os
 
 NUM_CLASSES = 6
-CLASS_NAMES = ["BCC", "SCC", "ACK", "SEK", "MEL", "NEV"]
-
 def train(model, dataloader, optimizer, scheduler, criterion, device, epoch, writer):
     model.train()
     total_loss = 0.0
@@ -35,17 +33,21 @@ def train(model, dataloader, optimizer, scheduler, criterion, device, epoch, wri
     writer.add_scalar('LR', optimizer.param_groups[0]['lr'], epoch)
     scheduler.step()
 
-def validate(model, dataloader, criterion, device, epoch, writer):
+def validate(model, dataloader, criterion, device, epoch, writer, class_names):
     model.eval()
     total_loss = 0.0
     correct = 0
     total = 0
-    class_correct = np.zeros(NUM_CLASSES)
-    class_total = np.zeros(NUM_CLASSES)
+    num_classes = len(class_names)
+    class_correct = np.zeros(num_classes)
+    class_total = np.zeros(num_classes)
 
     with torch.no_grad():
         for data_dict in dataloader:
-            images, labels, metadata = data_dict['image'].to(device), data_dict['label'].to(device), data_dict['metadata'].to(device)
+            images = data_dict['image'].to(device)
+            labels = data_dict['label'].to(device)
+            metadata = data_dict['metadata'].to(device)
+
             outputs = model(images, metadata)
             loss = criterion(outputs, labels)
             total_loss += loss.item()
@@ -54,7 +56,7 @@ def validate(model, dataloader, criterion, device, epoch, writer):
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
-            for cls in range(NUM_CLASSES):
+            for cls in range(num_classes):
                 mask = (labels == cls)
                 class_correct[cls] += (predicted[mask] == labels[mask]).sum().item()
                 class_total[cls] += mask.sum().item()
@@ -63,31 +65,38 @@ def validate(model, dataloader, criterion, device, epoch, writer):
     avg_loss = total_loss / len(dataloader)
     writer.add_scalar('Loss/val', avg_loss, epoch)
     writer.add_scalar('Accuracy/val', accuracy, epoch)
+
     print(f'Validation Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%')
     print('  Per-class accuracy:')
-    for i, name in enumerate(CLASS_NAMES):
+    for i, name in enumerate(class_names):
         if class_total[i] > 0:
             cls_acc = 100. * class_correct[i] / class_total[i]
             writer.add_scalar(f'Accuracy/val_{name}', cls_acc, epoch)
             print(f'    {name}: {cls_acc:.1f}% ({int(class_correct[i])}/{int(class_total[i])})')
     return avg_loss, accuracy
 
-def test(model, dataloader, criterion, device):
+
+def test(model, dataloader, device, class_names):
     model.eval()
     correct = 0
     total = 0
-    class_correct = np.zeros(NUM_CLASSES)
-    class_total = np.zeros(NUM_CLASSES)
+    num_classes = len(class_names)
+    class_correct = np.zeros(num_classes)
+    class_total = np.zeros(num_classes)
 
     with torch.no_grad():
         for data_dict in dataloader:
-            images, labels, metadata = data_dict['image'].to(device), data_dict['label'].to(device), data_dict['metadata'].to(device)
+            images = data_dict['image'].to(device)
+            labels = data_dict['label'].to(device)
+            metadata = data_dict['metadata'].to(device)
+
             outputs = model(images, metadata)
             _, predicted = torch.max(outputs.data, 1)
+
             total += labels.size(0)
             correct += (predicted == labels).sum().item()
 
-            for cls in range(NUM_CLASSES):
+            for cls in range(num_classes):
                 mask = (labels == cls)
                 class_correct[cls] += (predicted[mask] == labels[mask]).sum().item()
                 class_total[cls] += mask.sum().item()
@@ -95,7 +104,7 @@ def test(model, dataloader, criterion, device):
     accuracy = 100. * correct / total
     print(f'Test Accuracy: {accuracy:.2f}%')
     print('  Per-class accuracy:')
-    for i, name in enumerate(CLASS_NAMES):
+    for i, name in enumerate(class_names):
         if class_total[i] > 0:
             cls_acc = 100. * class_correct[i] / class_total[i]
             print(f'    {name}: {cls_acc:.1f}% ({int(class_correct[i])}/{int(class_total[i])})')
@@ -108,12 +117,12 @@ def main():
     model_type = "MultiModalCNNFusion"
 
     #Replace with path to data on your machine after running data_load.py
-    path_to_data = '/Users/noahtakashima/.cache/kagglehub/datasets/mahdavi1202/skin-cancer/versions/1'
+    path_to_data = '../src/data'
     train_loader, val_loader, test_loader = get_dataloaders(path_to_data, batch_size=32)
+    class_names = train_loader.dataset.class_names
 
     # Class-weighted loss with label smoothing: handles class imbalance and reduces overconfidence
-    class_weights = train_loader.dataset.class_weights().to(device)
-    criterion = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=0.1)
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.05)
 
     num_epochs = 20
     optimizer = Adam([
@@ -121,6 +130,19 @@ def main():
         {'params': model.metadata_mlp.parameters(), 'lr': 1e-3},
         {'params': model.classifier.parameters(), 'lr': 1e-3},
     ])
+
+#     for spatial vision model
+#     optimizer = Adam([
+#     {'params': model.resnet_feature_extractor.parameters(), 'lr': 1e-5},
+#     {'params': model.resnet_projection.parameters(),        'lr': 1e-4},
+
+#     {'params': model.vit.parameters(),                      'lr': 1e-6},  # ViT is sensitive; keep tiny
+#     {'params': model.vit_projection.parameters(),           'lr': 1e-4},
+
+#     {'params': model.metadata_projection.parameters(),      'lr': 1e-3},
+#     {'params': model.cross_attention.parameters(),          'lr': 1e-3},
+#     {'params': model.classifier.parameters(),               'lr': 1e-3},
+# ])
     # CosineAnnealingLR decays LR smoothly to eta_min instead of dropping sharply every 5 epochs
     scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=1e-6)
 
@@ -147,7 +169,7 @@ def main():
 
     for epoch in range(1, num_epochs + 1):
         train(model, train_loader, optimizer, scheduler, criterion, device, epoch, writer)
-        val_loss, val_acc = validate(model, val_loader, criterion, device, epoch, writer)
+        val_loss, val_acc = validate(model, val_loader, criterion, device, epoch, writer, class_names)
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save({
@@ -162,7 +184,7 @@ def main():
     checkpoint = torch.load(best_path, map_location=device)
     model.load_state_dict(checkpoint['model_state_dict'])
     print(f"\nLoaded best model from epoch {checkpoint['epoch']} (val_loss={checkpoint['val_loss']:.4f}, val_acc={checkpoint['val_acc']:.2f}%)")
-    test(model, test_loader, criterion, device)
+    test(model, test_loader, device, class_names)
     writer.close()
 
 
