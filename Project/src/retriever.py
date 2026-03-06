@@ -4,7 +4,20 @@ from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 load_dotenv()
 
-def query_builder(metadata: dict) -> str:
+_model = None
+_index = None
+
+def _get_resources():
+    global _model, _index
+    if _model is None:
+        _model = SentenceTransformer('all-mpnet-base-v2')
+    if _index is None:
+        pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
+        _index = pc.Index('skinai-knowledge')
+    return _model, _index
+
+
+def query_builder(metadata: dict, symptoms_description: str) -> str:
     symptoms = []
     if metadata.get('itch') == 1:      symptoms.append('itching')
     if metadata.get('bleed') == 1:     symptoms.append('bleeding')
@@ -22,20 +35,21 @@ def query_builder(metadata: dict) -> str:
         query += f" symptoms: {', '.join(symptoms)}"
     if metadata.get('skin_cancer_history') == 1:
         query += " personal history of skin cancer"
+    if symptoms_description:
+        query += f" Patient description: {symptoms_description}"
+    
     return query
 
-def retrieve(metadata: dict, top_k=5):
-    query = query_builder(metadata)
+def retrieve(metadata: dict, symptoms_description: str, top_k=5):
+    query = query_builder(metadata, symptoms_description)
     # Initialize Pinecone client
-    pc = Pinecone(api_key=os.getenv('PINECONE_API_KEY'))
-    index = pc.Index('skinai-knowledge')
+    model, index = _get_resources()
     # Create embedding for the query
-    model = SentenceTransformer('all-mpnet-base-v2')
     query_embedding = model.encode([query])[0].tolist()
     # Retrieve top-k relevant documents
     results = index.query(vector=query_embedding, top_k=top_k, include_metadata=True)
     
     return [
-        {'content': match['metadata']['content'], 'url': match['metadata']['url']}
+        {'content': match['metadata']['content'], 'url': match['metadata']['url'], 'disease': match['metadata']['disease']}
         for match in results['matches']
     ]
