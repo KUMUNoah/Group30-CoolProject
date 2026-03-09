@@ -242,7 +242,7 @@ class PADDataset(Dataset):
 # ---------------------------------------------------------------------------
 
 def get_transforms(
-    img_size: int = 224,
+    img_size: int = 300,
     augment: bool = True,
 ) -> Tuple[transforms.Compose, transforms.Compose]:
     """
@@ -284,7 +284,7 @@ def get_transforms(
 def get_dataloaders(
     data_root: str,
     batch_size: int = 32,
-    img_size: int = 224,
+    img_size: int = 300,
     val_size: float = 0.15,
     test_size: float = 0.15,
     use_metadata: bool = True,
