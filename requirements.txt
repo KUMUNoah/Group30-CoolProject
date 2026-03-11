@@ -54,6 +54,7 @@ urllib3==2.6.3
 Werkzeug==3.1.5
 bs4==0.0.2
 flask
+flask-cors
 anthropic
 pinecone
 sentence-transformers

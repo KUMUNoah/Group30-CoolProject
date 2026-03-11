@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkinAI – Skin Lesion Analysis</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f4f8;
+      color: #1a202c;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a365d;
+      color: #fff;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; }
+    header p { font-size: 0.85rem; opacity: 0.75; }
+
+    .disclaimer {
+      background: #fef3cd;
+      border-left: 4px solid #f6ad55;
+      padding: 0.75rem 1.25rem;
+      font-size: 0.85rem;
+      color: #744210;
+    }
+
+    main {
+      max-width: 780px;
+      margin: 2rem auto;
+      padding: 0 1rem 4rem;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+      padding: 1.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .card h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #2d3748;
+      margin-bottom: 1.25rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid #ebf4ff;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .card h2 .step {
+      background: #1a365d;
+      color: #fff;
+      border-radius: 50%;
+      width: 22px; height: 22px;
+      font-size: 0.75rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    /* Image upload */
+    #drop-zone {
+      border: 2px dashed #bee3f8;
+      border-radius: 10px;
+      background: #ebf8ff;
+      padding: 2.5rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #drop-zone:hover, #drop-zone.drag-over { background: #bee3f8; }
+    #drop-zone svg { opacity: 0.5; margin-bottom: 0.5rem; }
+    #drop-zone p { color: #4a5568; font-size: 0.9rem; }
+    #drop-zone span { font-size: 0.78rem; color: #718096; }
+    #image-file { display: none; }
+    #image-preview {
+      display: none;
+      margin-top: 1rem;
+      text-align: center;
+    }
+    #image-preview img {
+      max-width: 100%;
+      max-height: 220px;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+    }
+    #change-image {
+      display: block;
+      margin: 0.5rem auto 0;
+      font-size: 0.8rem;
+      color: #3182ce;
+      background: none;
+      border: none;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+
+    /* Form fields */
+    .field-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 520px) { .field-grid { grid-template-columns: 1fr; } }
+
+    .field { display: flex; flex-direction: column; gap: 0.35rem; }
+    .field label { font-size: 0.82rem; font-weight: 500; color: #4a5568; }
+    .field input[type="number"],
+    .field select {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      background: #f7fafc;
+      transition: border-color 0.15s;
+    }
+    .field input[type="number"]:focus,
+    .field select:focus {
+      outline: none;
+      border-color: #4299e1;
+      background: #fff;
+    }
+
+    /* Checkbox grid */
+    .check-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 0.6rem;
+    }
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.55rem 0.75rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      user-select: none;
+    }
+    .check-item:hover { background: #ebf8ff; border-color: #bee3f8; }
+    .check-item input[type="checkbox"] { accent-color: #1a365d; width: 15px; height: 15px; }
+    .check-item span { font-size: 0.85rem; color: #2d3748; }
+
+    /* Fitzpatrick scale */
+    .fitz-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 0.5rem;
+    }
+    @media (max-width: 520px) { .fitz-grid { grid-template-columns: repeat(3, 1fr); } }
+    .fitz-option { display: none; }
+    .fitz-label {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.3rem;
+      cursor: pointer;
+      padding: 0.5rem 0.25rem;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      transition: border-color 0.15s;
+    }
+    .fitz-label:hover { border-color: #bee3f8; }
+    .fitz-option:checked + .fitz-label { border-color: #1a365d; background: #ebf8ff; }
+    .fitz-swatch {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      border: 1px solid rgba(0,0,0,0.12);
+    }
+    .fitz-label small { font-size: 0.7rem; color: #718096; text-align: center; }
+
+    /* Diameter fields inline */
+    .diameter-row {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .diameter-row .field { flex: 1; min-width: 120px; }
+
+    /* Description */
+    textarea {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      resize: vertical;
+      min-height: 110px;
+      background: #f7fafc;
+      font-family: inherit;
+      transition: border-color 0.15s;
+    }
+    textarea:focus { outline: none; border-color: #4299e1; background: #fff; }
+    .char-hint { font-size: 0.75rem; color: #a0aec0; margin-top: 0.25rem; }
+
+    /* Submit */
+    #submit-btn {
+      width: 100%;
+      padding: 0.9rem;
+      background: #1a365d;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #submit-btn:hover { background: #2a4a7f; }
+    #submit-btn:disabled { background: #a0aec0; cursor: not-allowed; }
+
+    /* Spinner */
+    .spinner {
+      display: none;
+      width: 20px; height: 20px;
+      border: 3px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Results */
+    #results { display: none; }
+    #results .result-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    .badge {
+      padding: 0.3rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+    .badge-blue { background: #bee3f8; color: #1a365d; }
+    .badge-green { background: #c6f6d5; color: #22543d; }
+
+    .predictions-list { display: flex; flex-direction: column; gap: 0.6rem; margin-bottom: 1.25rem; }
+    .prediction-row {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .pred-label { font-size: 0.88rem; font-weight: 600; width: 40px; flex-shrink: 0; }
+    .pred-bar-wrap {
+      flex: 1;
+      background: #edf2f7;
+      border-radius: 999px;
+      height: 10px;
+      overflow: hidden;
+    }
+    .pred-bar {
+      height: 100%;
+      border-radius: 999px;
+      background: #1a365d;
+      transition: width 0.6s ease;
+    }
+    .pred-bar.top { background: #2b6cb0; }
+    .pred-conf { font-size: 0.82rem; color: #4a5568; width: 42px; text-align: right; }
+
+    .rag-box {
+      background: #f7fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-top: 1rem;
+    }
+    .rag-box h3 { font-size: 0.88rem; font-weight: 600; color: #4a5568; margin-bottom: 0.5rem; }
+    .rag-text { font-size: 0.9rem; line-height: 1.65; white-space: pre-wrap; color: #2d3748; }
+
+    .sources-list { margin-top: 1rem; }
+    .sources-list h3 { font-size: 0.82rem; font-weight: 600; color: #718096; margin-bottom: 0.4rem; }
+    .sources-list a {
+      display: block;
+      font-size: 0.8rem;
+      color: #3182ce;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+    .sources-list a:hover { text-decoration: underline; }
+
+    .error-box {
+      background: #fff5f5;
+      border: 1px solid #fc8181;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      color: #c53030;
+      font-size: 0.88rem;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>SkinAI</h1>
+    <p>Educational skin lesion analysis powered by AI</p>
+  </div>
+</header>
+
+<div class="disclaimer">
+  <strong>Educational use only.</strong> This tool does not provide a medical diagnosis. Always consult a licensed dermatologist for evaluation of skin lesions.
+</div>
+
+<main>
+
+  <!-- Step 1: Image -->
+  <div class="card">
+    <h2><span class="step">1</span> Upload Lesion Image</h2>
+    <div id="drop-zone">
+      <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="#4a5568">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+          d="M4 16l4-4a3 3 0 014 0l4 4m-4-8a1 1 0 110-2 1 1 0 010 2zm6 4h2a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/>
+      </svg>
+      <p>Drag & drop or click to select a photo</p>
+      <span>JPG or PNG, clear close-up of the lesion</span>
+    </div>
+    <input type="file" id="image-file" accept="image/jpeg,image/png" />
+    <div id="image-preview">
+      <img id="preview-img" src="" alt="preview" />
+      <button id="change-image">Choose a different image</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Demographics -->
+  <div class="card">
+    <h2><span class="step">2</span> About You</h2>
+    <div class="field-grid">
+      <div class="field">
+        <label for="age">Age</label>
+        <input type="number" id="age" min="1" max="120" placeholder="e.g. 45" />
+      </div>
+      <div class="field">
+        <label for="gender">Biological sex</label>
+        <select id="gender">
+          <option value="0">Female</option>
+          <option value="1">Male</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Skin type -->
+  <div class="card">
+    <h2><span class="step">3</span> Fitzpatrick Skin Type</h2>
+    <p style="font-size:0.82rem;color:#718096;margin-bottom:0.9rem">
+      Select the type that best describes how your skin reacts to sun exposure.
+    </p>
+    <div class="fitz-grid">
+      <div>
+        <input type="radio" name="fitspatrick" id="fitz1" class="fitz-option" value="1" />
+        <label for="fitz1" class="fitz-label">
+          <span class="fitz-swatch" style="background:#f9dfc0;"></span>
+          <small>Type I<br>Always burns</small>
+        </label>
+      </div>
+      <div>
+        <input type="radio" name="fitspatrick" id="fitz2" class="fitz-option" value="2" checked />
+        <label for="fitz2" class="fitz-label">
+          <span class="fitz-swatch" style="background:#f5c99a;"></span>
+          <small>Type II<br>Usually burns</small>
+        </label>
+      </div>
+      <div>
+        <input type="radio" name="fitspatrick" id="fitz3" class="fitz-option" value="3" />
+        <label for="fitz3" class="fitz-label">
+          <span class="fitz-swatch" style="background:#e8a97e;"></span>
+          <small>Type III<br>Sometimes burns</small>
+        </label>
+      </div>
+      <div>
+        <input type="radio" name="fitspatrick" id="fitz4" class="fitz-option" value="4" />
+        <label for="fitz4" class="fitz-label">
+          <span class="fitz-swatch" style="background:#c68642;"></span>
+          <small>Type IV<br>Rarely burns</small>
+        </label>
+      </div>
+      <div>
+        <input type="radio" name="fitspatrick" id="fitz5" class="fitz-option" value="5" />
+        <label for="fitz5" class="fitz-label">
+          <span class="fitz-swatch" style="background:#8d5524;"></span>
+          <small>Type V<br>Very rarely</small>
+        </label>
+      </div>
+      <div>
+        <input type="radio" name="fitspatrick" id="fitz6" class="fitz-option" value="6" />
+        <label for="fitz6" class="fitz-label">
+          <span class="fitz-swatch" style="background:#4a2912;"></span>
+          <small>Type VI<br>Never burns</small>
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 4: Lesion symptoms -->
+  <div class="card">
+    <h2><span class="step">4</span> Lesion Symptoms</h2>
+    <p style="font-size:0.82rem;color:#718096;margin-bottom:0.9rem">Check all that apply to the lesion you are concerned about.</p>
+    <div class="check-grid">
+      <label class="check-item"><input type="checkbox" id="itch" /><span>Itching</span></label>
+      <label class="check-item"><input type="checkbox" id="bleed" /><span>Bleeding</span></label>
+      <label class="check-item"><input type="checkbox" id="grew" /><span>Growing / Enlarging</span></label>
+      <label class="check-item"><input type="checkbox" id="hurt" /><span>Painful / Tender</span></label>
+      <label class="check-item"><input type="checkbox" id="changed" /><span>Changed in appearance</span></label>
+      <label class="check-item"><input type="checkbox" id="elevation" /><span>Raised / Elevated</span></label>
+    </div>
+  </div>
+
+  <!-- Step 5: Lesion size -->
+  <div class="card">
+    <h2><span class="step">5</span> Lesion Size (optional)</h2>
+    <p style="font-size:0.82rem;color:#718096;margin-bottom:0.9rem">Approximate dimensions in millimetres, measured at the widest points.</p>
+    <div class="diameter-row">
+      <div class="field">
+        <label for="diameter_1">Width (mm)</label>
+        <input type="number" id="diameter_1" min="0" max="200" step="0.5" placeholder="e.g. 8" />
+      </div>
+      <div class="field">
+        <label for="diameter_2">Height (mm)</label>
+        <input type="number" id="diameter_2" min="0" max="200" step="0.5" placeholder="e.g. 6" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 6: Medical & lifestyle history -->
+  <div class="card">
+    <h2><span class="step">6</span> Medical &amp; Lifestyle History</h2>
+    <div class="check-grid">
+      <label class="check-item"><input type="checkbox" id="skin_cancer_history" /><span>Personal history of skin cancer</span></label>
+      <label class="check-item"><input type="checkbox" id="cancer_history" /><span>Other personal cancer history</span></label>
+      <label class="check-item"><input type="checkbox" id="smoke" /><span>Current / former smoker</span></label>
+      <label class="check-item"><input type="checkbox" id="drink" /><span>Drinks alcohol regularly</span></label>
+      <label class="check-item"><input type="checkbox" id="pesticide" /><span>Pesticide / chemical exposure</span></label>
+      <label class="check-item"><input type="checkbox" id="biopsed" /><span>Lesion previously biopsied</span></label>
+      <label class="check-item"><input type="checkbox" id="has_piped_water" /><span>Has piped / treated water</span></label>
+      <label class="check-item"><input type="checkbox" id="has_sewage_system" /><span>Has sewage system</span></label>
+    </div>
+  </div>
+
+  <!-- Step 7: Description -->
+  <div class="card">
+    <h2><span class="step">7</span> Describe Your Symptoms</h2>
+    <textarea id="description" placeholder="In your own words, describe how the lesion looks, when it appeared, how it has changed, any other concerns…"></textarea>
+    <p class="char-hint">The more detail you provide, the better the analysis.</p>
+  </div>
+
+  <!-- Submit -->
+  <button id="submit-btn" onclick="submitForm()">
+    <span id="btn-text">Analyze</span>
+    <div class="spinner" id="spinner"></div>
+  </button>
+
+  <!-- Results -->
+  <div class="card" id="results" style="margin-top:1.5rem;">
+    <div class="result-header">
+      <h2 style="margin:0;border:none;padding:0;">Results</h2>
+      <span class="badge badge-green">Analysis complete</span>
+    </div>
+
+    <div id="predictions-section">
+      <p style="font-size:0.82rem;color:#718096;margin-bottom:0.6rem;">CNN model confidence scores (top 3):</p>
+      <div class="predictions-list" id="predictions-list"></div>
+    </div>
+
+    <div class="rag-box">
+      <h3>AI Educational Summary</h3>
+      <div class="rag-text" id="rag-text"></div>
+      <div class="sources-list" id="sources-list"></div>
+    </div>
+
+    <div id="error-section"></div>
+  </div>
+
+</main>
+
+<script>
+  const API_BASE = "http://localhost:5000";
+
+  // --- Image upload ---
+  const dropZone = document.getElementById("drop-zone");
+  const fileInput = document.getElementById("image-file");
+  const previewWrap = document.getElementById("image-preview");
+  const previewImg = document.getElementById("preview-img");
+
+  dropZone.addEventListener("click", () => fileInput.click());
+  dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+  dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+  dropZone.addEventListener("drop", e => {
+    e.preventDefault();
+    dropZone.classList.remove("drag-over");
+    const file = e.dataTransfer.files[0];
+    if (file) showPreview(file);
+  });
+  fileInput.addEventListener("change", () => {
+    if (fileInput.files[0]) showPreview(fileInput.files[0]);
+  });
+  document.getElementById("change-image").addEventListener("click", () => {
+    previewWrap.style.display = "none";
+    dropZone.style.display = "";
+    fileInput.value = "";
+  });
+
+  function showPreview(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      previewImg.src = e.target.result;
+      previewWrap.style.display = "block";
+      dropZone.style.display = "none";
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // --- Form submission ---
+  async function submitForm() {
+    const imageFile = fileInput.files[0];
+    if (!imageFile) { alert("Please upload an image of the lesion first."); return; }
+
+    const age = document.getElementById("age").value;
+    if (!age) { alert("Please enter your age."); return; }
+
+    setLoading(true);
+
+    const metadata = {
+      age:                  parseInt(age),
+      gender:               parseInt(document.getElementById("gender").value),
+      fitspatrick:          parseInt(document.querySelector('input[name="fitspatrick"]:checked').value),
+      itch:                 document.getElementById("itch").checked ? 1 : 0,
+      bleed:                document.getElementById("bleed").checked ? 1 : 0,
+      grew:                 document.getElementById("grew").checked ? 1 : 0,
+      hurt:                 document.getElementById("hurt").checked ? 1 : 0,
+      changed:              document.getElementById("changed").checked ? 1 : 0,
+      elevation:            document.getElementById("elevation").checked ? 1 : 0,
+      skin_cancer_history:  document.getElementById("skin_cancer_history").checked ? 1 : 0,
+      cancer_history:       document.getElementById("cancer_history").checked ? 1 : 0,
+      smoke:                document.getElementById("smoke").checked ? 1 : 0,
+      drink:                document.getElementById("drink").checked ? 1 : 0,
+      pesticide:            document.getElementById("pesticide").checked ? 1 : 0,
+      biopsed:              document.getElementById("biopsed").checked ? 1 : 0,
+      has_piped_water:      document.getElementById("has_piped_water").checked ? 1 : 0,
+      has_sewage_system:    document.getElementById("has_sewage_system").checked ? 1 : 0,
+      diameter_1:           parseFloat(document.getElementById("diameter_1").value) || 10,
+      diameter_2:           parseFloat(document.getElementById("diameter_2").value) || 10,
+    };
+
+    const description = document.getElementById("description").value;
+
+    const formData = new FormData();
+    formData.append("image", imageFile);
+    formData.append("metadata", JSON.stringify(metadata));
+    formData.append("description", description);
+
+    try {
+      const res = await fetch(`${API_BASE}/diagnose`, { method: "POST", body: formData });
+      if (!res.ok) throw new Error(`Server error: ${res.status}`);
+      const data = await res.json();
+      showResults(data);
+    } catch (err) {
+      showError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function setLoading(on) {
+    const btn = document.getElementById("submit-btn");
+    const text = document.getElementById("btn-text");
+    const spinner = document.getElementById("spinner");
+    btn.disabled = on;
+    text.style.display = on ? "none" : "inline";
+    spinner.style.display = on ? "block" : "none";
+  }
+
+  function showResults(data) {
+    const resultsEl = document.getElementById("results");
+    resultsEl.style.display = "block";
+    resultsEl.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    document.getElementById("error-section").innerHTML = "";
+
+    // Predictions bar chart
+    const list = document.getElementById("predictions-list");
+    list.innerHTML = "";
+    const preds = data.predictions || [];
+    preds.forEach((p, i) => {
+      const pct = Math.round(p.confidence * 100);
+      list.innerHTML += `
+        <div class="prediction-row">
+          <span class="pred-label">${escHtml(p.label)}</span>
+          <div class="pred-bar-wrap">
+            <div class="pred-bar ${i === 0 ? 'top' : ''}" style="width:${pct}%"></div>
+          </div>
+          <span class="pred-conf">${pct}%</span>
+        </div>`;
+    });
+
+    // RAG explanation
+    const rag = data.rag || {};
+    document.getElementById("rag-text").textContent = rag.explanation || "(No explanation returned)";
+
+    // Sources
+    const srcEl = document.getElementById("sources-list");
+    const sources = rag.sources || [];
+    if (sources.length) {
+      srcEl.innerHTML = "<h3>Sources</h3>" + sources.map(s =>
+        `<a href="${escHtml(s)}" target="_blank" rel="noopener">${escHtml(s)}</a>`
+      ).join("");
+    } else {
+      srcEl.innerHTML = "";
+    }
+  }
+
+  function showError(msg) {
+    const resultsEl = document.getElementById("results");
+    resultsEl.style.display = "block";
+    resultsEl.scrollIntoView({ behavior: "smooth" });
+    document.getElementById("predictions-list").innerHTML = "";
+    document.getElementById("rag-text").textContent = "";
+    document.getElementById("sources-list").innerHTML = "";
+    document.getElementById("error-section").innerHTML =
+      `<div class="error-box"><strong>Error:</strong> ${escHtml(msg)}</div>`;
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+</script>
+</body>
+</html>

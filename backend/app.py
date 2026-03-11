@@ -6,6 +6,7 @@ import json
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from PIL import Image
 from torchvision import transforms
 import torch
@@ -17,6 +18,7 @@ from inference import predict
 from rag import run_pipeline
 
 app = Flask(__name__)
+CORS(app)
 
 # ---------------------------------------------------------------------------
 # Image preprocessing — matches eval transform in dataloader (300x300)
