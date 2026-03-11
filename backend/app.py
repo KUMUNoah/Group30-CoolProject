@@ -5,7 +5,7 @@ import json
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from PIL import Image
 from torchvision import transforms
@@ -17,6 +17,8 @@ load_dotenv()
 from inference import predict
 from rag import run_pipeline
 
+FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
+
 app = Flask(__name__)
 CORS(app)
 
@@ -24,7 +26,7 @@ CORS(app)
 # Image preprocessing — matches eval transform in dataloader (300x300)
 # ---------------------------------------------------------------------------
 eval_transform = transforms.Compose([
-    transforms.Resize((300, 300)),
+    transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
@@ -78,6 +80,11 @@ def encode_metadata(data: dict) -> torch.Tensor:
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
+@app.route("/")
+def index():
+    return send_from_directory(FRONTEND_DIR, "index.html")
+
 
 @app.route("/predict", methods=["POST"])
 def predict_route():
@@ -135,4 +142,4 @@ def health():
 
 
 if __name__ == "__main__":
-    app.run(port=5000, debug=True)
+    app.run(host="127.0.0.1", port=5000, debug=True)

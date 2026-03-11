@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 from data.dataloader import get_dataloaders
-from src.model import MultiModalCNNFusion
+from src.model import MultiModalCNNFusion, SpatialVisionFusion
 from torch.optim import Adam
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.tensorboard import SummaryWriter
@@ -112,9 +112,9 @@ def test(model, dataloader, device, class_names):
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # To train different models change the model here
-    model = MultiModalCNNFusion().to(device)
+    model = SpatialVisionFusion().to(device)
 
-    model_type = "MultiModalCNNFusion"
+    model_type = "SpatialVisionFusion"
 
     #Replace with path to data on your machine after running data_load.py
     path_to_data = '../src/data'

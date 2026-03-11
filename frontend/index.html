@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>SkinAI – Skin Lesion Analysis</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -282,7 +283,14 @@
       margin-top: 1rem;
     }
     .rag-box h3 { font-size: 0.88rem; font-weight: 600; color: #4a5568; margin-bottom: 0.5rem; }
-    .rag-text { font-size: 0.9rem; line-height: 1.65; white-space: pre-wrap; color: #2d3748; }
+    .rag-text { font-size: 0.9rem; line-height: 1.65; color: #2d3748; }
+    .rag-text h1, .rag-text h2, .rag-text h3 { font-size: 0.95rem; font-weight: 600; margin: 0.9rem 0 0.3rem; color: #1a365d; }
+    .rag-text p { margin: 0.45rem 0; }
+    .rag-text ul, .rag-text ol { padding-left: 1.4rem; margin: 0.4rem 0; }
+    .rag-text li { margin: 0.2rem 0; }
+    .rag-text strong { font-weight: 600; color: #2d3748; }
+    .rag-text code { background: #edf2f7; padding: 0.1rem 0.35rem; border-radius: 4px; font-size: 0.82rem; }
+    .rag-text hr { border: none; border-top: 1px solid #e2e8f0; margin: 0.75rem 0; }
 
     .sources-list { margin-top: 1rem; }
     .sources-list h3 { font-size: 0.82rem; font-weight: 600; color: #718096; margin-bottom: 0.4rem; }
@@ -492,7 +500,7 @@
 </main>
 
 <script>
-  const API_BASE = "http://localhost:5000";
+  const API_BASE = "";
 
   // --- Image upload ---
   const dropZone = document.getElementById("drop-zone");
@@ -613,7 +621,7 @@
 
     // RAG explanation
     const rag = data.rag || {};
-    document.getElementById("rag-text").textContent = rag.explanation || "(No explanation returned)";
+    document.getElementById("rag-text").innerHTML = marked.parse(rag.explanation || "(No explanation returned)");
 
     // Sources
     const srcEl = document.getElementById("sources-list");

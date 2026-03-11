@@ -39,12 +39,13 @@ class SpatialVisionFusion(nn.Module):
     def __init__(self, shared_dim=512):
         super().__init__()
         
-        # Load pre-trained EfficientNet-B3 and ViT models
-        self.efficientnet = models.efficientnet_b3(weights=models.EfficientNet_B3_Weights.IMAGENET1K_V1)
+        # Load pre-trained ResNet-50 and ViT models
+        self.resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+        self.resnet_feature_extractor = nn.Sequential(*list(self.resnet.children())[:-2])
         self.vit = timm.create_model('vit_base_patch16_224', pretrained=True)
 
-        # Project EfficientNet-B3 spatial features (1536 channels) to shared dimension
-        self.efficientnet_projection = nn.Conv2d(1536, shared_dim, kernel_size=1)
+        # Project ResNet-50 spatial features (2048 channels) to shared dimension
+        self.resnet_projection = nn.Conv2d(2048, shared_dim, kernel_size=1)
 
         # Linear layers to project features to a common dimension
         self.vit_projection = nn.Linear(768, shared_dim)
@@ -64,12 +65,14 @@ class SpatialVisionFusion(nn.Module):
         )
     
     def forward(self, x, metadata=None):
-        # Extract spatial features from EfficientNet-B0
-        efficientnet_features = self.efficientnet.features(x)
-        # (B, 1280, 7, 7)
-        efficientnet_features = self.efficientnet_projection(efficientnet_features)
+        if metadata is None:
+            raise ValueError("metadata tensor is required for SpatialVisionFusion")
+        # Extract spatial features from ResNet-50
+        resnet_features = self.resnet_feature_extractor(x)
+        # (B, 2048, 7, 7)
+        resnet_features = self.resnet_projection(resnet_features)
         # (B, shared_dim, 7, 7)
-        
+
         # Extract features from ViT
         vit_features = self.vit.forward_features(x)
         # (B, seq_len, 768) - forward_features returns sequence of tokens
@@ -78,9 +81,9 @@ class SpatialVisionFusion(nn.Module):
         # Linear Function Transforms vector to (B, shared_dim)
         vit_query = vit_proj.unsqueeze(1)
         # (B, 1, shared_dim) - Attention query expects (B, seq_len, embed_dim) format
-        
+
         # Reshape features for cross attention
-        spatial_flatten = efficientnet_features.flatten(2).transpose(1, 2)
+        spatial_flatten = resnet_features.flatten(2).transpose(1, 2)
         # (B, 49, shared_dim) - Flatten spatial dimensions from 2D to 1D and transpose for attention format
 
         # Apply cross attention
